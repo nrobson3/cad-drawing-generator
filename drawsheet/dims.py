@@ -5,6 +5,7 @@ Every function takes model points through a View, so the value it prints is the
 true model size whatever the view scale.
 """
 import math
+import numbers
 
 import numpy as np
 
@@ -29,14 +30,17 @@ def tolerance_text(value, tol=None, places=2):
     base = fmt(value, places)
     if tol is None:
         return base
-    if isinstance(tol, (int, float)):
+    if isinstance(tol, numbers.Real):          # numpy scalars included
+        if tol < 0:
+            raise ValueError('a ± tolerance must be positive; give (upper, lower) for deviations')
         return '%s ±%s' % (base, fmt(tol, 3))
     upper, lower = tol            # signed deviations, e.g. (+0.018, 0) for H7, (-0.007, -0.020) for g6
     # ISO 129-1: both deviations to the same number of decimals (-0.007/-0.020, not -0.02)
     dp = max(len(fmt(abs(x), 3).partition('.')[2]) for x in (upper, lower))
 
     def dev(x):
-        return '0' if not x else ('+' if x > 0 else '-') + '%.*f' % (dp, abs(x))
+        s = '%.*f' % (dp, abs(x))
+        return '0' if float(s) == 0 else ('+' if x > 0 else '-') + s
     return '%s %s/%s' % (base, dev(upper), dev(lower))
 
 
@@ -52,6 +56,8 @@ def linear(view, a, b, offset, direction='h', text=None, tol=None, basic=False, 
     """
     sheet = view.sheet
     pa, pb = np.array(view.to_paper(a)), np.array(view.to_paper(b))
+    if np.linalg.norm(pb - pa) < 1e-9:
+        raise ValueError('a linear dimension needs two distinct points')
     if direction == 'h':
         u, n = np.array([1.0, 0.0]), np.array([0.0, 1.0])
     elif direction == 'v':

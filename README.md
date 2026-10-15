@@ -52,11 +52,16 @@ repo), drawn from its STL export:*
 
 ## How it works
 
-- **Sections from a mesh.** The mesh is cut by a plane triangle by triangle, and
-  the segments are chained end to end into closed loops.
-- **Outer boundaries and holes.** Loops are sorted by area. A loop inside an even
-  number of others is an outer boundary; inside an odd number it is a hole of its
-  nearest parent. This handles parts with holes in islands inside holes.
+- **Sections from a mesh.** The mesh is cut by a plane triangle by triangle.
+  Every cut point lies on a mesh edge and is named by that edge, so the two
+  faces sharing it meet at exactly the same point. No distance tolerance decides
+  which points join, so loops a fraction of a micron apart stay apart.
+- **Outer boundaries and holes.** Each cut segment is directed by its face's
+  outward normal, so every loop runs with the material on its left. Counter-
+  clockwise loops are outer boundaries and clockwise loops are holes. Each hole
+  goes to the smallest outer boundary that most of its points lie inside. This
+  handles islands inside holes, and bodies that touch at a corner or along a
+  face.
 - **Hatching that respects holes.** Outer rings are wound counter-clockwise and
   holes clockwise, so matplotlib's nonzero fill rule leaves holes empty. The
   hatch lines are clipped to that same path.
@@ -115,8 +120,8 @@ Python 3.9 or newer, with numpy and matplotlib.
 - There is no hidden-line removal for general 3D views. Views are sections or
   silhouettes from sections, which suits prismatic and turned parts.
 - Dimension placement is manual: you choose the offsets.
-- A loop's inside/outside is tested from one of its vertices, so holes that touch
-  their outer boundary can nest wrongly.
+- A mesh whose faces are not consistently wound is cut ignoring direction, and
+  its loops are nested by containment instead; a warning says so.
 
 ## License
 

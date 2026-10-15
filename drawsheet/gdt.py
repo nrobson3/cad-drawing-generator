@@ -101,15 +101,22 @@ def feature_control_frame(sheet, x, y, kind, tolerance, datums=(), diameter=Fals
     """
     if kind not in CHARACTERISTICS:
         raise ValueError('unknown characteristic %r' % kind)
+    if tolerance is None or str(tolerance).strip() == '':
+        raise ValueError('a feature control frame needs a tolerance value')
+    if modifier not in (None, 'M', 'L'):
+        raise ValueError("modifier must be 'M', 'L' or None")
+    datums = tuple(datums or ())
     if kind in NEEDS_DATUM and not datums:
         raise ValueError('%s needs at least one datum' % kind)
     h = 2.0 * cap                                   # ISO 1101: frame height twice the lettering
     cells = [('symbol', h)]
     tol = ('%s%s' % (chr(0x2300) if diameter else '', tolerance)).strip()
-    mod_w = 1.6 * cap if modifier else 0.0
-    cells.append(('text', max(h, text_width(tol, cap) + mod_w + 2.4)))
+    # rendered text runs a few per cent wider than its outline path in some fonts
+    tw = 1.06 * text_width(tol, cap)
+    mod_w = 1.8 * cap if modifier else 0.0
+    cells.append(('text', max(h, tw + mod_w + 2.4)))
     for d in datums:
-        cells.append(('datum', max(h, text_width(d, cap) + 2.4)))
+        cells.append(('datum', max(h, 1.06 * text_width(d, cap) + 2.4)))
     cx = x
     for i, (what, w) in enumerate(cells):
         sheet.rect(cx, y, w, h, width=NARROW, fill='white', zorder=7)
@@ -118,7 +125,7 @@ def feature_control_frame(sheet, x, y, kind, tolerance, datums=(), diameter=Fals
         elif what == 'text':
             sheet.text(cx + 1.2, y + h / 2, tol, cap=cap, va='center_baseline', zorder=8)
             if modifier:
-                mx = cx + 1.2 + text_width(tol, cap) + 0.8 * cap
+                mx = cx + 1.2 + tw + 1.0 * cap
                 sheet.circle((mx, y + h / 2), cap * 0.65, width=NARROW, zorder=8)
                 sheet.text(mx, y + h / 2, modifier, cap=cap * 0.75, ha='center', va='center_baseline', zorder=8)
         else:
@@ -131,6 +138,8 @@ def datum_feature(sheet, p, letter, direction=(0, -1), length=7.0, cap=3.5):
     """Datum feature symbol: filled triangle on the feature at paper p, a stem in
     'direction', and the boxed letter at the end."""
     d = np.array(direction, float)
+    if np.linalg.norm(d) < 1e-12:
+        raise ValueError('a datum feature needs a non-zero direction')
     d /= np.linalg.norm(d)
     n = np.array([-d[1], d[0]])
     p = np.array(p, float)

@@ -17,6 +17,8 @@ AXES = {'x': 0, 'y': 1, 'z': 2}
 
 
 def signed_area(loop):
+    if len(loop) < 3:
+        return 0.0
     p = np.asarray(loop, float)[:, :2]
     x, y = p[:, 0], p[:, 1]
     return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
@@ -26,7 +28,7 @@ def compound_path(loops):
     """One matplotlib Path for several (outer, holes) shapes: outers counter-
     clockwise, holes clockwise, so the nonzero rule leaves the holes empty."""
     verts, codes = [], []
-    for outer, holes in loops:
+    for outer, holes in loops or []:
         for ring, want_ccw in [(outer, True)] + [(h, False) for h in holes]:
             ring = [tuple(p[:2]) for p in ring]
             if len(ring) < 3:
@@ -35,6 +37,8 @@ def compound_path(loops):
                 ring = ring[::-1]
             verts += ring + [ring[0]]
             codes += [Path.MOVETO] + [Path.LINETO] * (len(ring) - 1) + [Path.CLOSEPOLY]
+    if not verts:
+        return None
     return Path(verts, codes)
 
 
@@ -58,6 +62,8 @@ class View:
         self.clip = None
         if clip is not None:
             from matplotlib.patches import Circle
+            if not clip[2] > 0:
+                raise ValueError('a detail view needs a clip circle with a positive radius')
             self.clip = Circle(clip[:2], clip[2], transform=self.ax.transData)
 
     # ------------------------------------------------------------- mapping
@@ -84,15 +90,20 @@ class View:
 
     # ------------------------------------------------------------- geometry
     def outline(self, loops, width=WIDE, fill='white'):
-        """Visible outline of one or more (outer, holes) shapes."""
+        """Visible outline of one or more (outer, holes) shapes. None if there is nothing to draw."""
         path = compound_path(self._paper_loops(loops))
+        if path is None:
+            return None
         return self._add(self.ax.add_patch(PathPatch(path, fc=fill, ec='k', lw=lw(width), zorder=3)))
 
     def section(self, loops, spacing=2.5, angle=45.0, width=WIDE):
         """Cut face: white fill, 45 deg hatching clipped to the exact face, wide outline.
-        Spacing is on paper (ISO 128-50 suggests at least 0.7 mm; 2-3 mm reads well)."""
+        Spacing is on paper (ISO 128-50 suggests at least 0.7 mm; 2-3 mm reads well).
+        None if there is nothing to draw (a plane that missed the part, say)."""
         paper = self._paper_loops(loops)
         path = compound_path(paper)
+        if path is None:
+            return None
         fill_path = path
         if self.clip is not None:
             # a patch takes one clip path, so cut the face to the detail circle
@@ -103,10 +114,10 @@ class View:
                 o = clip_convex(outer, window)
                 if len(o) >= 3:
                     cut.append((o, [h2 for h2 in (clip_convex(h, window) for h in holes) if len(h2) >= 3]))
-            if not cut:
+            fill_path = compound_path(cut)
+            if fill_path is None:
                 return None
             paper = cut
-            fill_path = compound_path(cut)
         self.ax.add_patch(PathPatch(fill_path, fc='white', ec='none', zorder=3))
         pts = np.array([p for outer, holes in paper for ring in [outer] + holes for p in ring])
         (x0, y0), (x1, y1) = pts.min(0), pts.max(0)
@@ -161,6 +172,8 @@ class View:
         The arrows must match the section: mesh.section(normal=n) is viewed from the
         +n side looking along -n (u right, v up), so 'look' is -n as seen in this view."""
         pa, pb = np.array(self.to_paper(a)), np.array(self.to_paper(b))
+        if np.linalg.norm(pb - pa) < 1e-9 or np.linalg.norm(look) < 1e-12:
+            raise ValueError('a cutting plane needs two distinct ends and a non-zero look direction')
         u = (pb - pa) / np.linalg.norm(pb - pa)
         self.sheet.line([tuple(pa), tuple(pb)], width=0.18, style=CHAIN)
         look = np.array(look, float) / np.linalg.norm(look)
@@ -189,6 +202,8 @@ def clip_convex(ring, window):
     """Sutherland-Hodgman: clip a ring (any shape) against a convex counter-clockwise
     window. A concave ring can come back with zero-width bridges along the window
     edge; they have no area, so fill and hatching are unaffected."""
+    if len(window) < 3 or signed_area(window) <= 1e-12:
+        return []                                   # an empty window keeps nothing
     out = [tuple(p[:2]) for p in ring]
     m = len(window)
     for i in range(m):

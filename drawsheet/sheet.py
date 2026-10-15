@@ -3,9 +3,11 @@
 Coordinates are millimetres on the paper, origin at the bottom-left corner of
 the trimmed sheet. Line widths follow ISO 128-2 line group 0.5 (wide 0.5 mm,
 narrow 0.25 mm); the frame follows ISO 5457 (20 mm filing margin on the left,
-10 mm elsewhere, zones about 50 mm long); the title block carries the ISO 7200
+10 mm elsewhere, 20 mm all round on A1; zones about 50 mm long); the title block carries the ISO 7200
 fields.
 """
+import os
+
 from matplotlib import font_manager
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
@@ -65,6 +67,7 @@ class Sheet:
         self.fields = dict(title=title, number=number, rev=rev, scale=scale, material=material,
                            finish=finish, mass=mass, drawn=drawn, date=date, units=units,
                            tolerance=tolerance, sheet=sheet, owner=owner)
+        self.fields = {k: '' if v is None else str(v) for k, v in self.fields.items()}
         # a bare Figure, so importing drawsheet never changes the host's matplotlib backend
         self.fig = Figure(figsize=(self.w / 25.4, self.h / 25.4))
         self.ax = self.fig.add_axes([0, 0, 1, 1])
@@ -158,15 +161,19 @@ class Sheet:
         return (x0, y0, w, h)
 
     def notes(self, lines, x=None, y=None, cap=2.5, heading='NOTES'):
-        """Numbered notes, top-down from (x, y); defaults to the lower left of the frame."""
+        """Numbered notes, top-down from (x, y); defaults to the lower left of the
+        frame, raised as far as a long list needs to stay inside it."""
         x = self.left + 5 if x is None else x
-        y = self.bottom + 50 if y is None else y
+        if y is None:
+            y = max(self.bottom + 50, self.bottom + 4 + 2 * cap + (len(lines) - 1) * 2.1 * cap)
         self.text(x, y, heading, cap=3.5, weight='bold')
         for i, n in enumerate(lines, 1):
             self.text(x, y - 2 * cap - (i - 1) * 2.1 * cap, '%d.  %s' % (i, n), cap=cap)
 
     def save(self, path, dpi=200):
         """Write .pdf, .svg or .png (by extension). PDF and SVG stay vector."""
+        if os.path.splitext(str(path))[1].lower() not in ('.pdf', '.svg', '.png'):
+            raise ValueError('save to a .pdf, .svg or .png path')
         self.fig.savefig(path, dpi=dpi)
         return path
 

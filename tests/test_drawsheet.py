@@ -219,6 +219,64 @@ class MeshTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mesh.read_stl(p)
 
+    def test_plane_touching_a_ridge_has_no_area(self):
+        # a ring of circular section, cut where it is only just touched: the two
+        # cut loops are a fraction of a micron apart and must not collapse into one
+        circle = [(10 + 3 * math.sin(math.radians(a)), 3 * math.cos(math.radians(a))) for a in range(0, 360, 15)]
+        t = flanged_bushing.revolve(circle[::-1], 90)
+        k = math.sin(math.radians(15)) / (1 - math.cos(math.radians(15)))   # dr/dz of the edges at the ridge
+        ring = 90 / (2 * math.pi) * math.sin(2 * math.pi / 90)               # 90-gon against the circle
+        for dz in (0.0, 1e-7, 2e-6, 1e-4):
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                a = mesh.area(mesh.section(t, (0, 0, 3.0 - dz), (0, 0, 1)))
+            self.assertAlmostEqual(a, 2 * math.pi * 10 * 2 * k * dz * ring, delta=1e-6 + 0.01 * a)   # 1e-6: the on-plane nudge
+
+    def test_bodies_touching_at_a_corner_stay_separate(self):
+        t = np.vstack([box(0, 0, 0, 1, 1, 1), box(1, 1, 0, 2, 2, 1)])
+        rng = np.random.default_rng(1)
+        for _ in range(10):
+            s = mesh.section(t[rng.permutation(len(t))], (0, 0, 0.5), (0, 0, 1))
+            self.assertEqual(len(s), 2)
+            self.assertAlmostEqual(mesh.area(s), 2.0, places=9)
+
+    def test_bodies_sharing_a_face(self):
+        t = np.vstack([box(0, 0, 0, 1, 1, 1), box(1, 0, 0, 2, 1, 1)])
+        rng = np.random.default_rng(2)
+        for _ in range(10):
+            s = mesh.section(t[rng.permutation(len(t))], (0, 0, 0.5), (0, 0, 1))
+            self.assertAlmostEqual(mesh.area(s), 2.0, places=9)
+
+    def test_binary_stl_with_a_solid_header(self):
+        tris = box(0, 0, 0, 1, 2, 3)
+        p = os.path.join(tempfile.mkdtemp(), 'b.stl')
+        with open(p, 'wb') as f:
+            f.write(b'solid exported by some CAD'.ljust(80, b' ') + struct.pack('<I', len(tris)))
+            for tri in tris:
+                f.write(struct.pack('<12fH', 0, 0, 0, *tri.ravel(), 0))
+            f.write(b'\0' * 16)                      # trailing padding
+        self.assertEqual(mesh.read_stl(p).shape, tris.shape)
+
+    def test_bad_planes_are_refused(self):
+        with self.assertRaises(ValueError):
+            mesh.section(box(0, 0, 0, 1, 1, 1), (0, 0, 0.5), (0, 0, 0))
+        with self.assertRaises(ValueError):
+            mesh.plane_basis((0, 0, 1), up=(0, 0, 2))
+
+    def test_a_plane_that_misses_draws_nothing(self):
+        s = mesh.section(box(0, 0, 0, 1, 1, 1), (0, 0, 9), (0, 0, 1))
+        self.assertEqual(s, [])
+        v = View(Sheet('A4'), centre=(100, 100))
+        self.assertIsNone(v.section(s))
+        self.assertIsNone(v.outline(s))
+
+    def test_numpy_numbers_as_tolerances(self):
+        self.assertEqual(dims.tolerance_text(10, np.float32(0.05)), '10 ±0.05')
+        self.assertEqual(dims.tolerance_text(10, np.int64(1)), '10 ±1')
+        self.assertEqual(dims.tolerance_text(12, (0.0004, 0)), '12 0/0')
+        with self.assertRaises(ValueError):
+            dims.tolerance_text(10, -0.05)
+
 
 class LayoutTests(unittest.TestCase):
     def test_text_width_is_measured(self):

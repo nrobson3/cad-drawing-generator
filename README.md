@@ -125,5 +125,4 @@ Python 3.9 or newer, with numpy and matplotlib.
 
 ## License
 
-Copyright © 2026 Navy Robson. All rights reserved. No license is granted; you are
-welcome to read the code, but reuse or redistribution needs written permission.
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Navy Robson.

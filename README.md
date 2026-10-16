@@ -1,4 +1,4 @@
-# cad-drawing-sheets
+# cad-drawing-generator
 
 `drawsheet` is a small Python library for engineering drawing sheets. It builds
 ISO-style sheets in code: frame, title block, views cut from the part's own
